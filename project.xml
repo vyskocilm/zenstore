@@ -1,0 +1,22 @@
+<project
+    name = "zenstore"
+    description = "ZeroMQ based encrypted storage"
+    prefix = "zns"
+    script = "zproject.gsl"
+    email = "michalvyskocil@gmail.com"
+    license = "MPL-2.0"
+    >
+
+    <include filename = "license.xml" />
+
+    <version major = "0" minor = "1" patch = "0" />
+
+    <use project = "czmq" />
+    <use project = "libsodium" />
+
+    <class name = "zns_nonce" private = "1">Class wrapping array buffers</class>
+    <main name = "zenstore" service = "1" >
+        Daemon
+    </main>
+
+</project>

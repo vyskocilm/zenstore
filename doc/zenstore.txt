@@ -1,0 +1,25 @@
+Name(7)
+=======
+
+
+NAME
+----
+zenstore - ZeroMQ based encrypted storage
+
+
+SYNOPSIS
+--------
+----
+#include <zenstore.h>
+
+cc ['flags'] 'files' -lzns ['libraries']
+----
+
+
+DESCRIPTION
+-----------
+
+Classes
+~~~~~~~
+
+Something.
