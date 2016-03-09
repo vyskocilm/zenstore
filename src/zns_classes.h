@@ -2,6 +2,7 @@
     zns_classes - private header file
 
     Copyright (c) the Contributors as noted in the AUTHORS file.       
+    This file is part of zenstore - ZeroMQ based encrypted store.      
                                                                        
     This Source Code Form is subject to the terms of the Mozilla Public
     License, v. 2.0. If a copy of the MPL was not distributed with this

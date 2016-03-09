@@ -2,6 +2,7 @@
     zenstore - generated layer of public API
 
     Copyright (c) the Contributors as noted in the AUTHORS file.       
+    This file is part of zenstore - ZeroMQ based encrypted store.      
                                                                        
     This Source Code Form is subject to the terms of the Mozilla Public
     License, v. 2.0. If a copy of the MPL was not distributed with this
@@ -48,9 +49,17 @@
 
 //  Opaque class structures to allow forward references
 //  These classes are stable or legacy and built in all releases
+//  Draft classes are by default not built stable releases
+#ifdef ZNS_BUILD_DRAFT_API
+typedef struct _zns_store_t zns_store_t;
+#define ZNS_STORE_T_DEFINED
+#endif // ZNS_BUILD_DRAFT_API
 
 
 //  Public classes, each with its own header file
+#ifdef ZNS_BUILD_DRAFT_API
+#include "zns_store.h"
+#endif // ZNS_BUILD_DRAFT_API
 
 #endif
 /*

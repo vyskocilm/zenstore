@@ -9,7 +9,7 @@ libdir=@libdir@
 includedir=@includedir@
 
 Name: libzns
-Description: Zero ENcrypted storage
+Description: ZeroMQ based encrypted storage
 Version: @VERSION@
 
 Requires:libzmq libczmq libsodium

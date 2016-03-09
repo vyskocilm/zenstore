@@ -15,6 +15,7 @@
     <use project = "libsodium" />
 
     <class name = "zns_nonce" private = "1">Class wrapping array buffers</class>
+    <class name = "zns_store" state = "draft">Class implementing access to encrypted storage</class>
     <main name = "zenstore" service = "1" >
         Daemon
     </main>

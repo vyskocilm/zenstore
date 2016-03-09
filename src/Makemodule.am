@@ -16,9 +16,20 @@ include_HEADERS = \
     include/zenstore.h \
     include/zns_library.h
 
+if ENABLE_DRAFTS
+include_HEADERS += \
+    include/zns_store.h
+
+endif
 src_libzns_la_SOURCES = \
     src/zns_nonce.c \
     src/platform.h
+
+if ENABLE_DRAFTS
+src_libzns_la_SOURCES += \
+    src/zns_store.c
+
+endif
 
 src_libzns_la_CPPFLAGS = ${AM_CPPFLAGS}
 
