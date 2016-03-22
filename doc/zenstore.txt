@@ -1,25 +1,26 @@
-Name(7)
-=======
-
+zenstore(1)
+===========
 
 NAME
 ----
-zenstore - ZeroMQ based encrypted storage
-
+zenstore - Daemon
 
 SYNOPSIS
 --------
 ----
-#include <zenstore.h>
-
-cc ['flags'] 'files' -lzns ['libraries']
+Please add @interface section in ../src/zenstore.c.
 ----
-
 
 DESCRIPTION
 -----------
 
-Classes
-~~~~~~~
+zenstore - Daemon
 
-Something.
+Please add @discuss section in ../src/zenstore.c.
+
+EXAMPLE
+-------
+.From zenstore_test method
+----
+Please add @selftest section in ../src/zenstore.c.
+----

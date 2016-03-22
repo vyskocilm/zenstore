@@ -25,7 +25,6 @@
 #include <sodium.h>
 
 //  ZNS version macros for compile-time API detection
-
 #define ZNS_VERSION_MAJOR 0
 #define ZNS_VERSION_MINOR 1
 #define ZNS_VERSION_PATCH 0
@@ -47,18 +46,25 @@
 #   define ZNS_EXPORT
 #endif
 
+//  Project has no stable classes, so we build the draft API
+#undef  ZNS_BUILD_DRAFT_API
+#define ZNS_BUILD_DRAFT_API
+
 //  Opaque class structures to allow forward references
 //  These classes are stable or legacy and built in all releases
-//  Draft classes are by default not built stable releases
+//  Draft classes are by default not built in stable releases
 #ifdef ZNS_BUILD_DRAFT_API
 typedef struct _zns_store_t zns_store_t;
 #define ZNS_STORE_T_DEFINED
+typedef struct _zns_srv_t zns_srv_t;
+#define ZNS_SRV_T_DEFINED
 #endif // ZNS_BUILD_DRAFT_API
 
 
 //  Public classes, each with its own header file
 #ifdef ZNS_BUILD_DRAFT_API
 #include "zns_store.h"
+#include "zns_srv.h"
 #endif // ZNS_BUILD_DRAFT_API
 
 #endif

@@ -42,6 +42,14 @@ ZNS_EXPORT void
 ZNS_EXPORT void
     zns_store_set_file (zns_store_t *self, const char *file);
 
+//  Load the keystore from path/file, return 0 for success, -1 for error
+ZNS_EXPORT int
+    zns_store_load (zns_store_t *self, byte key [crypto_secretbox_KEYBYTES]);
+
+//  Save the keystore to path/file, return 0 for success, -1 for error
+ZNS_EXPORT int
+    zns_store_save (zns_store_t *self, byte key [crypto_secretbox_KEYBYTES]);
+
 //  Self test of this class
 ZNS_EXPORT void
     zns_store_test (bool verbose);

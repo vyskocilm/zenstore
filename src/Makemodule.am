@@ -18,7 +18,8 @@ include_HEADERS = \
 
 if ENABLE_DRAFTS
 include_HEADERS += \
-    include/zns_store.h
+    include/zns_store.h \
+    include/zns_srv.h
 
 endif
 src_libzns_la_SOURCES = \
@@ -27,7 +28,8 @@ src_libzns_la_SOURCES = \
 
 if ENABLE_DRAFTS
 src_libzns_la_SOURCES += \
-    src/zns_store.c
+    src/zns_store.c \
+    src/zns_srv.c
 
 endif
 
