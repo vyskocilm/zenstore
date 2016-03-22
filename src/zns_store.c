@@ -24,7 +24,7 @@
 struct _zns_store_t {
     zhashx_t *hash;
     zns_nonce_t *nonce;
-    char *path;
+    char *dir;
     char *file;
 };
 
@@ -63,7 +63,7 @@ zns_store_new (void)
     self->nonce = zns_nonce_new ();
     assert (self->nonce);
 
-    self->path = NULL;
+    self->dir = NULL;
     self->file = NULL;
 
     return self;
@@ -81,13 +81,16 @@ zns_store_destroy (zns_store_t **self_p)
         //  Free class properties here
         zhashx_destroy (&self->hash);
         zns_nonce_destroy (&self->nonce);
-        zstr_free (&self->path);
+        zstr_free (&self->dir);
         zstr_free (&self->file);
         //  Free object itself
         free (self);
         *self_p = NULL;
     }
 }
+
+//  --------------------------------------------------------------------------
+//  Put the binary chunk with given key to store
 
 void
 zns_store_put (zns_store_t *self, const char* key, zchunk_t *value)
@@ -100,7 +103,11 @@ zns_store_put (zns_store_t *self, const char* key, zchunk_t *value)
         zhashx_update (self->hash, key, value);
 }
 
-zchunk_t *
+//  --------------------------------------------------------------------------
+//  Get the reference to the store or NULL if not there - ownership is NOT
+//  passed
+
+const zchunk_t *
 zns_store_get (zns_store_t *self, const char* key)
 {
     assert (self);
@@ -108,12 +115,18 @@ zns_store_get (zns_store_t *self, const char* key)
     return (zchunk_t*) zhashx_lookup (self->hash, key);
 }
 
+//  --------------------------------------------------------------------------
+//  Set directory to store into
+
 void
-zns_store_set_path (zns_store_t *self, const char *path)
+zns_store_set_dir (zns_store_t *self, const char *dir)
 {
     assert (self);
-    self->path = strdup (path);
+    self->dir = strdup (dir);
 }
+
+//  --------------------------------------------------------------------------
+//  Set file name inside path
 
 void
 zns_store_set_file (zns_store_t *self, const char *file)
@@ -202,7 +215,7 @@ s_save (zns_store_t *self, zmsg_t **msg_p)
     char filename [PATH_MAX];
     //TODO: maybe POSIX API is not the best here :) - lets investigate zfile /zsys_file API
     //TODO O_TMPFILE sounds like an interesting feature here - lets check it
-    snprintf (filename, PATH_MAX, "%s/%s.tmp", self->path, self->file);
+    snprintf (filename, PATH_MAX, "%s/%s.tmp", self->dir, self->file);
     int fd = open (filename, O_CLOEXEC | O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW | O_SYNC | O_TRUNC, 0600);
     if (fd < 0) {
         zsys_error ("Can't create '%s' : %s", filename, strerror (errno));
@@ -228,7 +241,7 @@ s_save (zns_store_t *self, zmsg_t **msg_p)
     }
 
     char filename_new [PATH_MAX];
-    snprintf (filename_new, PATH_MAX, "%s/%s", self->path, self->file);
+    snprintf (filename_new, PATH_MAX, "%s/%s", self->dir, self->file);
     int r = rename (filename, filename_new);
     if (r == -1) {
         zsys_error ("Rename failed: %s", strerror (errno));
@@ -237,13 +250,16 @@ s_save (zns_store_t *self, zmsg_t **msg_p)
     return 0;
 }
 
+//  --------------------------------------------------------------------------
+//  Save the keystore to path/file, return 0 for success, -1 for error
+
 int zns_store_save (
         zns_store_t *self,
         byte key [crypto_secretbox_KEYBYTES])
 {
     assert (self);
 
-    if (!self->path || !self->file)
+    if (!self->dir || !self->file)
         return -1;
 
     zmsg_t *msg = zmsg_new ();
@@ -266,14 +282,17 @@ int zns_store_save (
     return s_save (self, &msg);
 }
 
+//  --------------------------------------------------------------------------
+//  Load the keystore from path/file, return 0 for success, -1 for error
+
 int
 zns_store_load (zns_store_t *self, byte key [crypto_secretbox_KEYBYTES])
 {
     assert (self);
-    if (!self->path || !self->file)
+    if (!self->dir || !self->file)
         return -1;
 
-    zfile_t *file = zfile_new (self->path, self->file);
+    zfile_t *file = zfile_new (self->dir, self->file);
     if (!file)
         return -1;
 
@@ -449,22 +468,24 @@ zns_store_test (bool verbose)
     assert (!zns_store_get (store, "NO-KEY"));
 
     // store test
-    zns_store_set_path (store, "src");
+    zns_store_set_dir (store, "src");
     zns_store_set_file (store, "test.zenstore");
 
     int r = zns_store_save (store, (byte*) "S3cret!");
     assert (r == 0);
     zns_store_destroy (&store);
+    assert (!store);
 
     // load test
     store = zns_store_new ();
-    zns_store_set_path (store, "src");
+    zns_store_set_dir (store, "src");
     zns_store_set_file (store, "test.zenstore");
 
     r = zns_store_load (store, (byte*) "S3cret!");
     assert (r == 0);
 
     assert (zns_store_get (store, "KEY"));
+    zns_store_destroy (&store);
 
     //  @end
     printf ("OK\n");

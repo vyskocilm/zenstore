@@ -25,6 +25,23 @@ ZNS_EXPORT zns_store_t *
 ZNS_EXPORT void
     zns_store_destroy (zns_store_t **self_p);
 
+//  Put the binary chunk with given key to store
+ZNS_EXPORT void
+    zns_store_put (zns_store_t *self, const char* key, zchunk_t *value);
+
+//  Get the reference to the store or NULL if not there - ownership is NOT
+//  passed
+ZNS_EXPORT const zchunk_t *
+    zns_store_get (zns_store_t *self, const char* key);
+
+//  Set directory to store
+ZNS_EXPORT void
+    zns_store_set_dir (zns_store_t *self, const char *dir);
+
+//  Set file name inside path
+ZNS_EXPORT void
+    zns_store_set_file (zns_store_t *self, const char *file);
+
 //  Self test of this class
 ZNS_EXPORT void
     zns_store_test (bool verbose);
