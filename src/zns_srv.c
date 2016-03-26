@@ -48,6 +48,7 @@ zns_srv_new (zsock_t *pipe, void *args)
 
     // Initialize properties
     self->rw_socket = NULL;
+    self->store = zns_store_new ();
     sodium_memzero (self->password, crypto_secretbox_KEYBYTES);
 
     return self;
@@ -66,6 +67,7 @@ zns_srv_destroy (zns_srv_t **self_p)
 
         // Free actor properties
         zsock_destroy (&self->rw_socket);
+        zns_store_destroy (&self->store);
         sodium_memzero (self->password, crypto_secretbox_KEYBYTES);
 
         //  Free object itself
@@ -125,6 +127,9 @@ zns_srv_recv_api (zns_srv_t *self)
        return;        //  Interrupted
 
     char *command = zmsg_popstr (request);
+    if (self->verbose)
+        zsys_debug ("API command=%s", command);
+
     if (streq (command, "START"))
         zns_srv_start (self);
     else
@@ -134,9 +139,11 @@ zns_srv_recv_api (zns_srv_t *self)
     if (streq (command, "VERBOSE"))
         self->verbose = true;
     else
-    if (streq (command, "$TERM"))
+    if (streq (command, "$TERM")) {
         //  The $TERM command is send by zactor_destroy() method
+        zns_srv_stop (self);
         self->terminated = true;
+    }
     else
     if (streq (command, "BIND")) {
         char *endpoint = zmsg_popstr (request);
@@ -163,7 +170,7 @@ zns_srv_recv_api (zns_srv_t *self)
         zstr_free (&passwd);
     }
     else {
-        zsys_error ("invalid command '%s'", command);
+        zsys_error ("invalid API command '%s'", command);
         assert (false);
     }
     zstr_free (&command);
@@ -177,16 +184,25 @@ s_zns_srv_recv_rw (zns_srv_t *self)
     assert (self);
     char *command, *key;
     zmsg_t *msg = zmsg_recv (self->rw_socket);
+
+    zframe_t *routing_id = zmsg_pop (msg);
+
     command = zmsg_popstr (msg);
     key = zmsg_popstr (msg);
+
+    if (self->verbose)
+        zsys_debug ("Proto command=%s %s", command, key);
 
     if (streq (command, "GET"))
     {
         zchunk_t *chunk = (zchunk_t*) zns_store_get (self->store, key);
-        zmsg_t *msg = zmsg_new ();
+        zmsg_t *reply = zmsg_new ();
+        zmsg_append (reply, &routing_id);
+        zmsg_addstr (reply, command);
+        zmsg_addstr (reply, key);
         if (chunk)
-            zmsg_addmem (msg, zchunk_data (chunk), zchunk_size (chunk));
-        zmsg_send (&msg, self->rw_socket);
+            zmsg_addmem (reply, zchunk_data (chunk), zchunk_size (chunk));
+        zmsg_send (&reply, self->rw_socket);
     }
     else
     if (streq (command, "PUT"))
@@ -203,6 +219,7 @@ s_zns_srv_recv_rw (zns_srv_t *self)
 
     zstr_free (&key);
     zstr_free (&command);
+    zframe_destroy (&routing_id);
     zmsg_destroy (&msg);
 }
 
@@ -237,12 +254,66 @@ zns_srv_actor (zsock_t *pipe, void *args)
 void
 zns_srv_test (bool verbose)
 {
+
     printf (" * zns_srv: ");
+    zsys_file_delete ("src/test.zenstore");
+    zsys_file_delete ("src/test.zenstore.tmp");
     //  @selftest
     //  Simple create/destroy test
+
+    static const char* endpoint = "inproc://@/zns-srv-test";
+    static const char* password = "S3cr3t!";
+
     zactor_t *zns_srv = zactor_new (zns_srv_actor, NULL);
 
     //TODO - call start/put/get/stop/start/get/get
+    zstr_sendx (zns_srv, "BIND", endpoint, NULL);
+    zstr_sendx (zns_srv, "DIR", "src", NULL);
+    zstr_sendx (zns_srv, "FILE", "test.zenstore", NULL);
+    zstr_sendx (zns_srv, "PASSWORD", password, NULL);
+    zstr_sendx (zns_srv, "START", NULL);
+
+    zsock_t *sock = zsock_new_dealer (endpoint);
+    assert (sock);
+
+    // PUT/GET test
+    char *command, *key, *value;
+
+    zstr_sendx (sock, "PUT", "KEY", "VALUE", NULL);
+    zstr_sendx (sock, "GET", "KEY", NULL);
+
+    //FIXME: recvx fails on zmsg_is ...
+    //zstr_recvx (sock, &command, &key, &value);
+    zmsg_t *msg = zmsg_recv (sock);
+    command = zmsg_popstr (msg);
+    key = zmsg_popstr (msg);
+    value = zmsg_popstr (msg);
+    zmsg_destroy (&msg);
+    assert (streq (command, "GET"));
+    assert (streq (key, "KEY"));
+    assert (streq (value, "VALUE"));
+
+    zstr_free (&command);
+    zstr_free (&key);
+    zstr_free (&value);
+
+    // GET - no key
+    zstr_sendx (sock, "GET", "NOKEY", NULL);
+
+    msg = zmsg_recv (sock);
+    command = zmsg_popstr (msg);
+    key = zmsg_popstr (msg);
+    value = zmsg_popstr (msg);
+    zmsg_destroy (&msg);
+    assert (streq (command, "GET"));
+    assert (streq (key, "NOKEY"));
+    assert (!value);
+
+    zstr_free (&command);
+    zstr_free (&key);
+    zstr_free (&value);
+
+    zsock_destroy (&sock);
 
     zactor_destroy (&zns_srv);
     //  @end
