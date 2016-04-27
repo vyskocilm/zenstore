@@ -22,6 +22,7 @@
 //  Structure of our class
 
 struct _zns_store_t {
+    bool verbose;
     zhashx_t *hash;
     zns_nonce_t *nonce;
     char *dir;
@@ -44,6 +45,64 @@ s_duplicator (const void *self)
 {
     assert (self);
     return (void*) zchunk_dup ((zchunk_t*) self);
+}
+
+// pack the hashx in form string : zchunk_t
+static zframe_t*
+s_zhashx_pack (zhashx_t *hash)
+{
+    assert (hash);
+    zmsg_t *msg = zmsg_new ();
+
+    for (void *it = zhashx_first (hash);
+               it != NULL;
+               it = zhashx_next (hash))
+    {
+        zmsg_addstr (msg, (char*) zhashx_cursor (hash));
+        zchunk_t *chunk = (zchunk_t *) it;
+        zmsg_addmem (msg, zchunk_data (chunk), zchunk_size (chunk));
+    }
+
+    byte *buffer;
+    size_t size = zmsg_encode (msg, &buffer);
+    zmsg_destroy (&msg);
+
+    zframe_t *frame = zframe_new (buffer, size);
+    free (buffer);
+    return frame;
+}
+
+//unpack the zhashx (string : zchunk_t)
+static zhashx_t*
+s_zhashx_unpack (zframe_t *frame)
+{
+    assert (frame);
+    zmsg_t *msg = zmsg_decode (zframe_data (frame), zframe_size (frame));
+    if (!msg)
+        return NULL;
+
+    // zns_store_new
+    zhashx_t *hash = zhashx_new ();
+    zhashx_set_destructor (hash, s_destructor);
+    zhashx_set_duplicator (hash, s_duplicator);
+
+    while (zmsg_size (msg) > 0)
+    {
+        char *key = zmsg_popstr (msg);
+        zframe_t *frame = zmsg_pop (msg);
+        assert (key);
+        assert (frame);
+
+        zchunk_t *chunk = zchunk_new (zframe_data (frame), zframe_size (frame));
+        zframe_destroy (&frame);
+
+        zhashx_update (hash, key, (void*) chunk);
+        zstr_free (&key);
+        zchunk_destroy (&chunk);
+    }
+    zmsg_destroy (&msg);
+
+    return hash;
 }
 
 //  --------------------------------------------------------------------------
@@ -156,6 +215,8 @@ s_add_header (zns_store_t *self, zmsg_t *msg)
     if (!zns_nonce_initialized (self->nonce))
         zns_nonce_rand (self->nonce);
     char *nonce_str = zns_nonce_str (self->nonce);
+    if (self->verbose)
+        zsys_debug ("\tnonce_str=%s", nonce_str);
     zconfig_set_value (nonce, nonce_str, NULL);
     zstr_free (&nonce_str);
 
@@ -165,6 +226,8 @@ s_add_header (zns_store_t *self, zmsg_t *msg)
         return -1;
 
     int r = zmsg_addmem (msg, zchunk_data (chunk), zchunk_size (chunk));
+    if (self->verbose)
+        zsys_debug ("\theader size: %zu", zchunk_size (chunk));
     zchunk_destroy (&chunk);
     return r;
 }
@@ -172,9 +235,11 @@ s_add_header (zns_store_t *self, zmsg_t *msg)
 static int
 s_add_encrypted_hash (zns_store_t *self, zmsg_t *msg, byte key [crypto_secretbox_KEYBYTES])
 {
-    zframe_t *frame = zhashx_pack (self->hash);
+    zframe_t *frame = s_zhashx_pack (self->hash);
     if (!frame)
         return -1;
+    if (self->verbose)
+        zsys_debug ("\tpacked zhashx size: %zu", zframe_size (frame));
 
     size_t buffer_size = zframe_size (frame);
     size_t encrypted_buffer_size = crypto_secretbox_MACBYTES + buffer_size;
@@ -199,6 +264,8 @@ s_add_encrypted_hash (zns_store_t *self, zmsg_t *msg, byte key [crypto_secretbox
     }
 
     zmsg_addmem (msg, encrypted_buffer, encrypted_buffer_size);
+    if (self->verbose)
+        zsys_debug ("\tencrypted buffer size: %zu", encrypted_buffer_size);
     sodium_memzero (encrypted_buffer, encrypted_buffer_size);
     free (encrypted_buffer);
     return 0;
@@ -225,10 +292,14 @@ s_save (zns_store_t *self, zmsg_t **msg_p)
 
     byte *buffer;
     size_t buffer_size = zmsg_encode (msg, &buffer);
+    if (self->verbose)
+        zsys_debug ("\toverall buffer size: %zu", buffer_size);
     zmsg_destroy (&msg);
     //TODO decode error checking
 
     ssize_t wr = write (fd, buffer, buffer_size);
+    if (self->verbose)
+        zsys_debug ("\tbytes written to file: %zd", wr);
     sodium_memzero (buffer, buffer_size);
     free (buffer);
     fsync (fd);
@@ -288,6 +359,8 @@ int zns_store_save (
 int
 zns_store_load (zns_store_t *self, byte key [crypto_secretbox_KEYBYTES])
 {
+    if (self->verbose)
+        zsys_debug ("zns_store_load:");
     assert (self);
     if (!self->dir || !self->file)
         return -1;
@@ -317,7 +390,11 @@ zns_store_load (zns_store_t *self, byte key [crypto_secretbox_KEYBYTES])
 
     zfile_restat (file);
     size_t buffer_size = zfile_cursize (file);
+    if (self->verbose)
+        zsys_debug ("\tfile size: %zu", buffer_size);
     zchunk_t *buffer = zfile_read (file, buffer_size, 0);
+    if (self->verbose)
+        zsys_debug ("\toverall buffer size: %zu", zchunk_size (buffer));
     const char *error_message = strerror (errno);
     zfile_close (file);
     zfile_destroy (&file);
@@ -341,6 +418,8 @@ zns_store_load (zns_store_t *self, byte key [crypto_secretbox_KEYBYTES])
         zmsg_destroy (&msg);
         return -1;
     }
+    if (self->verbose)
+        zsys_debug ("\tpacked zhashx size: %zu", zframe_size (frame));
 
     zchunk_t *header_chunk = zchunk_new (zframe_data (frame), zframe_size (frame));
     zframe_destroy (&frame);
@@ -382,23 +461,27 @@ zns_store_load (zns_store_t *self, byte key [crypto_secretbox_KEYBYTES])
         return -1;
     }
 
-    zns_nonce_t *nonce = zns_nonce_new ();
-    r = zns_nonce_from_str (nonce, zconfig_get (header, "nonce", ""));
+    r = zns_nonce_from_str (self->nonce, zconfig_get (header, "nonce", ""));
     zconfig_destroy (&header);
     if (r == -1) {
         zsys_error ("Can't decode nonce: '%s'", zconfig_get (header, "nonce", ""));
-        zns_nonce_destroy (&nonce);
         zmsg_destroy (&msg);
         return -1;
+    }
+    if (self->verbose) {
+        char *nonce_str = zns_nonce_str (self->nonce);
+        zsys_debug ("\tnonce_str=%s", nonce_str);
+        zstr_free (&nonce_str);
     }
 
     frame = zmsg_pop (msg);
     if (!frame) {
         zsys_error ("Can't read encrypted data frame");
-        zns_nonce_destroy (&nonce);
         zmsg_destroy (&msg);
         return -1;
     }
+    if (self->verbose)
+        zsys_debug ("\tencrypted buffer size: %zu", zframe_size (frame));
 
     size_t decrypted_buffer_size = zframe_size (frame) - crypto_secretbox_MACBYTES;
     zchunk_t *decrypted_buffer = zchunk_new (NULL, decrypted_buffer_size);
@@ -407,7 +490,7 @@ zns_store_load (zns_store_t *self, byte key [crypto_secretbox_KEYBYTES])
             zchunk_data (decrypted_buffer),
             zframe_data (frame),
             zframe_size (frame),
-            zns_nonce_raw (nonce),
+            zns_nonce_raw (self->nonce),
             key);
 
     sodium_memzero (zframe_data (frame), zframe_size (frame));
@@ -415,34 +498,31 @@ zns_store_load (zns_store_t *self, byte key [crypto_secretbox_KEYBYTES])
     zconfig_destroy (&header);
     zmsg_destroy (&msg);
 
-
     if (r != 0) {
         zsys_error ("Decrypting of storage failed");
         sodium_memzero (zchunk_data (decrypted_buffer), zchunk_max_size (decrypted_buffer));
         zchunk_destroy (&decrypted_buffer);
-        zns_nonce_destroy (&nonce);
 
     }
 
     frame = zframe_new (zchunk_data (decrypted_buffer), decrypted_buffer_size);
+    if (self->verbose)
+        zsys_debug ("\tpacked zhashx size: %zu", zframe_size (frame));
     sodium_memzero (zchunk_data (decrypted_buffer), zchunk_max_size (decrypted_buffer));
     zchunk_destroy (&decrypted_buffer);
 
-    zhashx_t *hash = zhashx_unpack (frame);
+    zhashx_t *hash = s_zhashx_unpack (frame);
 
     sodium_memzero (zframe_data (frame), zframe_size (frame));
     zframe_destroy (&frame);
 
     if (!hash) {
         zsys_error ("Unpacking of storage failed");
-        zns_nonce_destroy (&nonce);
         return -1;
     }
 
     zhashx_destroy (&self->hash);
     self->hash = hash;
-    zns_nonce_destroy (&self->nonce);
-    self->nonce = nonce;
     return 0;
 }
 

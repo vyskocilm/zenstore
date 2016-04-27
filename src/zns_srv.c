@@ -92,11 +92,8 @@ static int
 zns_srv_start (zns_srv_t *self)
 {
     assert (self);
-    int r = zns_store_load (self->store, self->password);
-    if (r == -1)
-        zsys_error ("Failed to open crypto store");
-
-    return r;
+    zns_store_load (self->store, self->password);
+    return 0;
 }
 
 
@@ -111,6 +108,8 @@ zns_srv_stop (zns_srv_t *self)
     int r = zns_store_save (self->store, self->password);
     if (r == -1)
         zsys_error ("Failed to open crypto store");
+    if (self->verbose)
+        zsys_debug ("\tzns_store_save -> %d", r);
 
     return r;
 }
@@ -196,6 +195,7 @@ s_zns_srv_recv_rw (zns_srv_t *self)
     if (streq (command, "GET"))
     {
         zchunk_t *chunk = (zchunk_t*) zns_store_get (self->store, key);
+
         zmsg_t *reply = zmsg_new ();
         zmsg_append (reply, &routing_id);
         zmsg_addstr (reply, command);
@@ -266,12 +266,12 @@ zns_srv_test (bool verbose)
 
     zactor_t *zns_srv = zactor_new (zns_srv_actor, NULL);
 
-    //TODO - call start/put/get/stop/start/get/get
-    zstr_sendx (zns_srv, "BIND", endpoint, NULL);
+    // start an actor
     zstr_sendx (zns_srv, "DIR", "src", NULL);
     zstr_sendx (zns_srv, "FILE", "test.zenstore", NULL);
     zstr_sendx (zns_srv, "PASSWORD", password, NULL);
     zstr_sendx (zns_srv, "START", NULL);
+    zstr_sendx (zns_srv, "BIND", endpoint, NULL);
 
     zsock_t *sock = zsock_new_dealer (endpoint);
     assert (sock);
@@ -285,6 +285,56 @@ zns_srv_test (bool verbose)
     //FIXME: recvx fails on zmsg_is ...
     //zstr_recvx (sock, &command, &key, &value);
     zmsg_t *msg = zmsg_recv (sock);
+    command = zmsg_popstr (msg);
+    key = zmsg_popstr (msg);
+    value = zmsg_popstr (msg);
+    zmsg_destroy (&msg);
+    assert (streq (command, "GET"));
+    assert (streq (key, "KEY"));
+    assert (streq (value, "VALUE"));
+
+    zstr_free (&command);
+    zstr_free (&key);
+    zstr_free (&value);
+
+    // GET - no key
+    zstr_sendx (sock, "GET", "NOKEY", NULL);
+
+    msg = zmsg_recv (sock);
+    command = zmsg_popstr (msg);
+    key = zmsg_popstr (msg);
+    value = zmsg_popstr (msg);
+    zmsg_destroy (&msg);
+    assert (streq (command, "GET"));
+    assert (streq (key, "NOKEY"));
+    assert (!value);
+
+    zstr_free (&command);
+    zstr_free (&key);
+    zstr_free (&value);
+
+    zsock_destroy (&sock);
+
+    zactor_destroy (&zns_srv);
+
+    // The second round - keystore should have been stored, so can be loaded
+    zns_srv = zactor_new (zns_srv_actor, NULL);
+
+    // start an actor
+    zstr_sendx (zns_srv, "DIR", "src", NULL);
+    zstr_sendx (zns_srv, "FILE", "test.zenstore", NULL);
+    zstr_sendx (zns_srv, "PASSWORD", password, NULL);
+    zstr_sendx (zns_srv, "START", NULL);
+    zstr_sendx (zns_srv, "BIND", endpoint, NULL);
+
+    sock = zsock_new_dealer (endpoint);
+    assert (sock);
+
+    zstr_sendx (sock, "GET", "KEY", NULL);
+
+    //FIXME: recvx fails on zmsg_is ...
+    //zstr_recvx (sock, &command, &key, &value);
+    msg = zmsg_recv (sock);
     command = zmsg_popstr (msg);
     key = zmsg_popstr (msg);
     value = zmsg_popstr (msg);
