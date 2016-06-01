@@ -19,6 +19,8 @@
 
 #include "zns_classes.h"
 
+#include <libgen.h>
+
 //  Structure of our actor
 
 struct _zns_srv_t {
@@ -151,16 +153,17 @@ zns_srv_recv_api (zns_srv_t *self)
         zstr_free (&endpoint);
     }
     else
-    if (streq (command, "DIR")) {
-        char *dir = zmsg_popstr (request);
-        zns_store_set_dir (self->store, dir);
-        zstr_free (&dir);
-    }
-    else
-    if (streq (command, "FILE")) {
-        char *file = zmsg_popstr (request);
+    if (streq (command, "STORE")) {
+        char *str = zmsg_popstr (request);
+        char *abspath = realpath (str, NULL);
+        char *dir = dirname (abspath);
+        zns_store_set_dir (self->store, dirname (dir));
+        zstr_free (&abspath);
+
+        char *file = strdup (str);
         zns_store_set_file (self->store, file);
         zstr_free (&file);
+        zstr_free (&str);
     }
     else
     if (streq (command, "PASSWORD")) {
@@ -267,8 +270,7 @@ zns_srv_test (bool verbose)
     zactor_t *zns_srv = zactor_new (zns_srv_actor, NULL);
 
     // start an actor
-    zstr_sendx (zns_srv, "DIR", "src", NULL);
-    zstr_sendx (zns_srv, "FILE", "test.zenstore", NULL);
+    zstr_sendx (zns_srv, "STORE", "src/test.zenstore", NULL);
     zstr_sendx (zns_srv, "PASSWORD", password, NULL);
     zstr_sendx (zns_srv, "START", NULL);
     zstr_sendx (zns_srv, "BIND", endpoint, NULL);
@@ -321,8 +323,7 @@ zns_srv_test (bool verbose)
     zns_srv = zactor_new (zns_srv_actor, NULL);
 
     // start an actor
-    zstr_sendx (zns_srv, "DIR", "src", NULL);
-    zstr_sendx (zns_srv, "FILE", "test.zenstore", NULL);
+    zstr_sendx (zns_srv, "STORE", "src/test.zenstore", NULL);
     zstr_sendx (zns_srv, "PASSWORD", password, NULL);
     zstr_sendx (zns_srv, "START", NULL);
     zstr_sendx (zns_srv, "BIND", endpoint, NULL);
