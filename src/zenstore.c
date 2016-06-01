@@ -83,11 +83,15 @@ end:
 int main (int argc, char *argv [])
 {
     bool verbose = false;
+    char *endpoint = ZNS_DEFAULT_ENDPOINT;
+    char *store_path = NULL;
     int argn;
     for (argn = 1; argn < argc; argn++) {
         if (streq (argv [argn], "--help")
         ||  streq (argv [argn], "-h")) {
             puts ("zenstore [options] ...");
+            puts ("  --endpoint / -e        zeromq endpoint to bind");
+            puts ("  --store / -s           path to store file");
             puts ("  --verbose / -v         verbose test output");
             puts ("  --help / -h            this information");
             return 0;
@@ -96,16 +100,67 @@ int main (int argc, char *argv [])
         if (streq (argv [argn], "--verbose")
         ||  streq (argv [argn], "-v"))
             verbose = true;
+        else
+        if (streq (argv [argn], "--endpoint")
+        ||  streq (argv [argn], "-e")) {
+            if (argc == argn+1) {
+                printf ("Missing argument for --endpoint/-e\n");
+                return -1;
+            }
+            endpoint = argv [argn+1];
+            argn++;
+        }
+        else
+        if (streq (argv [argn], "--store")
+        ||  streq (argv [argn], "-s")) {
+            if (argc == argn+1) {
+                printf ("Missing argument for --store/-s\n");
+                return -1;
+            }
+            store_path = argv [argn+1];
+            argn++;
+        }
         else {
             printf ("Unknown option: %s\n", argv [argn]);
             return 1;
         }
     }
+
     //  Insert main code here
     if (verbose)
-        zsys_info ("zenstore - Daemon");
+        zsys_info ("zenstore - Daemon\n\tendpoint=%s, store_path=%s", endpoint, store_path);
 
-    byte * key = s_getkey ();
-    zstr_free (&key);
+    byte * password = s_getkey ();
+    if (!password) {
+        printf ("Reading password failed");
+        return -1;
+    }
+
+    // start an actor
+    zactor_t *zns_srv = zactor_new (zns_srv_actor, NULL);
+
+    // start an actor
+    zstr_sendx (zns_srv, "STORE", "src/test.zenstore", NULL);
+    zstr_sendx (zns_srv, "PASSWORD", password, NULL);
+    free (password);
+    password = NULL;
+    zstr_sendx (zns_srv, "START", NULL);
+    zstr_sendx (zns_srv, "BIND", endpoint, NULL);
+
+    // src/malamute.c under MPL license
+    //  Accept and print any message back from server
+    while (true) {
+        char *message = zstr_recv (zns_srv);
+        if (message) {
+            puts (message);
+            free (message);
+        }
+        else {
+            puts ("interrupted");
+            break;
+        }
+    }
+    zactor_destroy (&zns_srv);
+
     return 0;
 }

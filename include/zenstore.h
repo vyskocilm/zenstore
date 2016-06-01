@@ -16,5 +16,6 @@
 #include "zns_library.h"
 
 //  Add your own public definitions here, if you need them
+#define ZNS_DEFAULT_ENDPOINT "ipc://@/zenstore"
 
 #endif
